@@ -17,6 +17,7 @@ interface Props {
 export default function GameScreen({ onMainMenu }: Props) {
   const {
     state,
+    lastResult,
     selectHit,
     submitAnswer,
     nextTurn,
@@ -41,7 +42,6 @@ export default function GameScreen({ onMainMenu }: Props) {
         kidsMode={kidsMode}
         onPlayAgain={() => {
           resetGame();
-          // The parent will show the menu to start a new game
         }}
         onMainMenu={() => {
           resetGame();
@@ -81,18 +81,25 @@ export default function GameScreen({ onMainMenu }: Props) {
       {/* Diamond */}
       <BaseballDiamond bases={state.bases} outs={state.outs} kidsMode={kidsMode} />
 
+      {/* Spacer to separate diamond from content below */}
+      <div className="h-4" />
+
       {/* Computer thinking indicator */}
       {isComputerTurn && state.turnPhase === 'select-hit' && (
-        <PhariseeAvatar thinking kidsMode={kidsMode} />
+        <div className="mt-2">
+          <PhariseeAvatar thinking kidsMode={kidsMode} />
+        </div>
       )}
 
       {isComputerTurn && state.turnPhase === 'answer-question' && (
-        <PhariseeAvatar thinking kidsMode={kidsMode} />
+        <div className="mt-2">
+          <PhariseeAvatar thinking kidsMode={kidsMode} />
+        </div>
       )}
 
       {/* Human player: hit selection */}
       {!isComputerTurn && state.turnPhase === 'select-hit' && (
-        <div className="mt-4">
+        <div className="mt-2">
           <HitSelector
             availableHits={availableHitTypes}
             onSelect={selectHit}
@@ -103,7 +110,7 @@ export default function GameScreen({ onMainMenu }: Props) {
 
       {/* Human player: answer question */}
       {!isComputerTurn && state.turnPhase === 'answer-question' && state.currentQuestion && (
-        <div className="mt-4">
+        <div className="mt-2">
           <QuestionDisplay
             question={state.currentQuestion}
             onAnswer={submitAnswer}
@@ -114,7 +121,7 @@ export default function GameScreen({ onMainMenu }: Props) {
 
       {/* Result display */}
       {state.turnPhase === 'result' && (
-        <div className="mt-4">
+        <div className="mt-2">
           {isComputerTurn && phariseeText && (
             <div className="mb-4">
               <PhariseeAvatar text={phariseeText} kidsMode={kidsMode} />
@@ -122,6 +129,8 @@ export default function GameScreen({ onMainMenu }: Props) {
           )}
           <ResultDisplay
             state={state}
+            correct={lastResult?.correct ?? false}
+            runsScored={lastResult?.runsScored ?? 0}
             onContinue={nextTurn}
             phariseeText={isComputerTurn ? phariseeText : undefined}
             kidsMode={kidsMode}

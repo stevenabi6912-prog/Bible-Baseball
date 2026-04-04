@@ -1,13 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import type {
   GameState, GameSettings, HitType, Team, Player, TurnPhase, Question,
-  GameMode, ComputerDifficulty,
+  GameMode, ComputerDifficulty, AtBatResult,
 } from '../types';
 import {
   createInitialGameState, processAtBat, getAvailableHitTypes,
-  getCurrentBatter, getBattingTeam, switchHalfInning,
+  getCurrentBatter, getBattingTeam,
 } from '../lib/game-engine';
 import { selectQuestion, checkAnswer } from '../lib/questions';
 import {
@@ -24,11 +24,9 @@ type GameAction =
   | { type: 'START_GAME'; settings: GameSettings }
   | { type: 'SELECT_HIT'; hitType: HitType }
   | { type: 'SET_QUESTION'; question: Question; usedIds: string[] }
-  | { type: 'SUBMIT_ANSWER'; answer: string }
-  | { type: 'PROCESS_RESULT'; correct: boolean }
+  | { type: 'PROCESS_RESULT'; correct: boolean; result: AtBatResult }
   | { type: 'NEXT_TURN' }
   | { type: 'DEVICE_PASSED' }
-  | { type: 'SET_TURN_PHASE'; phase: TurnPhase }
   | { type: 'SET_STATE'; state: GameState }
   | { type: 'RESET' };
 
@@ -38,6 +36,7 @@ type GameAction =
 
 interface GameContextType {
   state: GameState | null;
+  lastResult: AtBatResult | null;
   startGame: (settings: GameSettings) => void;
   selectHit: (hitType: HitType) => void;
   submitAnswer: (answer: string) => void;
@@ -63,55 +62,78 @@ export function useGame() {
 // Reducer
 // ============================================================
 
-function gameReducer(state: GameState | null, action: GameAction): GameState | null {
+interface ReducerState {
+  game: GameState | null;
+  lastResult: AtBatResult | null;
+}
+
+function gameReducer(state: ReducerState, action: GameAction): ReducerState {
   switch (action.type) {
     case 'START_GAME': {
       const { settings } = action;
       const awayTeam = buildTeam('away', settings);
       const homeTeam = buildTeam('home', settings);
-      return createInitialGameState(settings, homeTeam, awayTeam);
+      return {
+        game: createInitialGameState(settings, homeTeam, awayTeam),
+        lastResult: null,
+      };
     }
     case 'SET_STATE':
-      return action.state;
+      return { ...state, game: action.state };
     case 'SET_QUESTION':
-      if (!state) return state;
+      if (!state.game) return state;
       return {
         ...state,
-        currentQuestion: action.question,
-        usedQuestionIds: action.usedIds,
-        turnPhase: 'answer-question',
+        game: {
+          ...state.game,
+          currentQuestion: action.question,
+          usedQuestionIds: action.usedIds,
+          turnPhase: 'answer-question' as TurnPhase,
+        },
       };
-    case 'SET_TURN_PHASE':
-      if (!state) return state;
-      return { ...state, turnPhase: action.phase };
     case 'SELECT_HIT':
-      if (!state) return state;
-      return { ...state, currentHitType: action.hitType };
+      if (!state.game) return state;
+      return {
+        ...state,
+        game: { ...state.game, currentHitType: action.hitType },
+      };
     case 'PROCESS_RESULT': {
-      if (!state || !state.currentHitType) return state;
-      const { newState } = processAtBat(state, state.currentHitType, action.correct);
-      return { ...newState, turnPhase: 'result' };
+      if (!state.game || !state.game.currentHitType) return state;
+      const { newState, result } = processAtBat(state.game, state.game.currentHitType, action.correct);
+      return {
+        game: { ...newState, turnPhase: 'result' as TurnPhase },
+        lastResult: result,
+      };
     }
     case 'NEXT_TURN': {
-      if (!state) return state;
-      if (state.gameOver) {
-        return { ...state, turnPhase: 'game-over' };
+      if (!state.game) return state;
+      if (state.game.gameOver) {
+        return {
+          ...state,
+          game: { ...state.game, turnPhase: 'game-over' as TurnPhase },
+        };
       }
-      // Check if half-inning ended (outs reset means it was switched by processAtBat)
-      const needsPass = state.mode === 'local-multiplayer';
+      const needsPass = state.game.mode === 'local-multiplayer';
       return {
         ...state,
-        currentQuestion: null,
-        currentHitType: null,
-        turnPhase: 'select-hit',
-        waitingForPass: needsPass,
+        game: {
+          ...state.game,
+          currentQuestion: null,
+          currentHitType: null,
+          turnPhase: 'select-hit' as TurnPhase,
+          waitingForPass: needsPass,
+        },
+        lastResult: null,
       };
     }
     case 'DEVICE_PASSED':
-      if (!state) return state;
-      return { ...state, waitingForPass: false };
+      if (!state.game) return state;
+      return {
+        ...state,
+        game: { ...state.game, waitingForPass: false },
+      };
     case 'RESET':
-      return null;
+      return { game: null, lastResult: null };
     default:
       return state;
   }
@@ -124,7 +146,6 @@ function gameReducer(state: GameState | null, action: GameAction): GameState | n
 function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
   if (settings.mode === 'vs-computer') {
     if (side === 'away') {
-      // Human is away (bats first)
       const playerName = settings.players?.[0]?.name || 'Player';
       return {
         id: 'human-team',
@@ -133,7 +154,6 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
         currentBatterIndex: 0,
       };
     }
-    // Computer is home
     return {
       id: 'computer-team',
       name: 'The Pharisee',
@@ -165,7 +185,6 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
     };
   }
 
-  // Online — placeholder, will be set from lobby
   return {
     id: `${side}-team`,
     name: side === 'away' ? 'Visitors' : 'Home',
@@ -179,12 +198,15 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
 // ============================================================
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(gameReducer, null);
-  const phariseeTextRef = useRef('');
-  const [phariseeText, setPhariseeText] = React.useState('');
+  const [reducerState, dispatch] = useReducer(gameReducer, { game: null, lastResult: null });
+  const state = reducerState.game;
+  const lastResult = reducerState.lastResult;
+  const [phariseeText, setPhariseeText] = useState('');
   const computerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Use a ref to always have current state in the computer effect
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  // Clean up timers on unmount
   useEffect(() => {
     return () => {
       if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
@@ -198,23 +220,24 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const selectHit = useCallback((hitType: HitType) => {
-    if (!state) return;
+    const s = stateRef.current;
+    if (!s) return;
     dispatch({ type: 'SELECT_HIT', hitType });
-    // Fetch a question for this difficulty
     const { question, updatedUsedIds } = selectQuestion(
       hitType,
-      state.kidsMode,
-      state.usedQuestionIds
+      s.kidsMode,
+      s.usedQuestionIds
     );
     dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
-  }, [state]);
+  }, []);
 
   const submitAnswer = useCallback((answer: string) => {
-    if (!state || !state.currentQuestion) return;
-    const correct = checkAnswer(state.currentQuestion, answer);
+    const s = stateRef.current;
+    if (!s || !s.currentQuestion || !s.currentHitType) return;
+    const correct = checkAnswer(s.currentQuestion, answer);
 
     if (correct) {
-      if (state.currentHitType === 'homerun') {
+      if (s.currentHitType === 'homerun') {
         soundManager.play('homerun');
       } else {
         soundManager.play('correct');
@@ -223,22 +246,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       soundManager.play('wrong');
     }
 
-    dispatch({ type: 'PROCESS_RESULT', correct });
-  }, [state]);
+    // Compute result for passing to reducer
+    dispatch({ type: 'PROCESS_RESULT', correct, result: { correct, hitType: s.currentHitType, runsScored: 0, outsRecorded: 0, newBases: s.bases } });
+  }, []);
 
   const nextTurn = useCallback(() => {
-    if (!state) return;
-    if (state.gameOver) {
+    const s = stateRef.current;
+    if (!s) return;
+    if (s.gameOver) {
       soundManager.stop('background');
-      const batting = getBattingTeam(state);
-      if (batting.id === 'human-team' || state.homeScore > state.awayScore) {
+      if (s.awayScore > s.homeScore) {
         soundManager.play('gameOverWin');
       } else {
         soundManager.play('gameOverLose');
       }
     }
     dispatch({ type: 'NEXT_TURN' });
-  }, [state]);
+  }, []);
 
   const confirmDevicePass = useCallback(() => {
     dispatch({ type: 'DEVICE_PASSED' });
@@ -246,6 +270,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const resetGame = useCallback(() => {
     soundManager.stopAll();
+    if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
     dispatch({ type: 'RESET' });
   }, []);
 
@@ -258,53 +283,58 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // Handle computer turn automatically
   useEffect(() => {
     if (!state || !isComputerTurn || state.turnPhase !== 'select-hit') return;
+    if (availableHitTypes.length === 0) return;
 
     const difficulty = currentBatter?.computerDifficulty || 'medium';
     const hitChoice = getPhariseeHitChoice(availableHitTypes, difficulty);
     const delay = getPhariseeThinkingDelay();
 
-    computerTimerRef.current = setTimeout(() => {
-      // Select hit
+    const timer1 = setTimeout(() => {
+      const s = stateRef.current;
+      if (!s || s.turnPhase !== 'select-hit') return;
+
       dispatch({ type: 'SELECT_HIT', hitType: hitChoice });
 
       const { question, updatedUsedIds } = selectQuestion(
         hitChoice,
-        state.kidsMode,
-        state.usedQuestionIds
+        s.kidsMode,
+        s.usedQuestionIds
       );
       dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
 
-      // Pharisee "thinks" then answers
       const answerDelay = getPhariseeThinkingDelay();
-      computerTimerRef.current = setTimeout(() => {
+      const timer2 = setTimeout(() => {
         const { correct } = getPhariseeAnswer(question, difficulty);
         const flavorText = getFlavorText(correct, true);
-        phariseeTextRef.current = flavorText;
         setPhariseeText(flavorText);
 
         if (correct) {
-          if (hitChoice === 'homerun') {
-            soundManager.play('homerun');
-          } else {
-            soundManager.play('correct');
-          }
+          soundManager.play(hitChoice === 'homerun' ? 'homerun' : 'correct');
         } else {
           soundManager.play('wrong');
         }
 
-        dispatch({ type: 'PROCESS_RESULT', correct });
+        dispatch({
+          type: 'PROCESS_RESULT',
+          correct,
+          result: { correct, hitType: hitChoice, runsScored: 0, outsRecorded: 0, newBases: { first: false, second: false, third: false } },
+        });
       }, answerDelay);
+      computerTimerRef.current = timer2;
     }, delay);
+    computerTimerRef.current = timer1;
 
     return () => {
       if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
     };
-  }, [state?.turnPhase, isComputerTurn, state?.currentInning, state?.halfInning, state?.outs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.turnPhase, state?.halfInning, state?.currentInning, isComputerTurn]);
 
   return (
     <GameContext.Provider
       value={{
         state,
+        lastResult,
         startGame,
         selectHit,
         submitAnswer,

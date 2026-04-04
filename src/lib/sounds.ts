@@ -4,6 +4,9 @@
 
 import { Howl } from 'howler';
 
+/** Get the base path for assets (matches next.config.ts basePath) */
+const BASE_PATH = process.env.NODE_ENV === 'production' ? '/Bible-Baseball' : '';
+
 export type SoundName =
   | 'background'
   | 'correct'
@@ -21,32 +24,32 @@ interface SoundConfig {
 
 const SOUND_CONFIG: Record<SoundName, SoundConfig> = {
   background: {
-    src: ['/sounds/organ-loop.mp3'],
+    src: [BASE_PATH + '/sounds/organ-loop.mp3'],
     loop: true,
     volume: 0.3,
   },
   correct: {
-    src: ['/sounds/crowd-cheer.mp3'],
+    src: [BASE_PATH + '/sounds/crowd-cheer.mp3'],
     volume: 0.6,
   },
   wrong: {
-    src: ['/sounds/crowd-groan.mp3'],
+    src: [BASE_PATH + '/sounds/crowd-groan.mp3'],
     volume: 0.5,
   },
   homerun: {
-    src: ['/sounds/homerun-fanfare.mp3'],
+    src: [BASE_PATH + '/sounds/homerun-fanfare.mp3'],
     volume: 0.7,
   },
   advance: {
-    src: ['/sounds/crowd-react.mp3'],
+    src: [BASE_PATH + '/sounds/crowd-react.mp3'],
     volume: 0.4,
   },
   gameOverWin: {
-    src: ['/sounds/victory-jingle.mp3'],
+    src: [BASE_PATH + '/sounds/victory-jingle.mp3'],
     volume: 0.6,
   },
   gameOverLose: {
-    src: ['/sounds/defeat-jingle.mp3'],
+    src: [BASE_PATH + '/sounds/defeat-jingle.mp3'],
     volume: 0.5,
   },
 };

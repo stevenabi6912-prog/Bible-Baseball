@@ -1,27 +1,28 @@
 'use client';
 
-import type { GameState } from '../../types';
+import type { GameState, HitType } from '../../types';
 
 interface Props {
   state: GameState;
+  correct: boolean;
+  runsScored: number;
   onContinue: () => void;
   phariseeText?: string;
   kidsMode?: boolean;
 }
 
-export default function ResultDisplay({ state, onContinue, phariseeText, kidsMode }: Props) {
-  const lastAtBat = getLastAtBatInfo(state);
+export default function ResultDisplay({ state, correct, runsScored, onContinue, phariseeText, kidsMode }: Props) {
   const textSize = kidsMode ? 'text-xl' : 'text-base';
   const headingSize = kidsMode ? 'text-3xl' : 'text-2xl';
 
   return (
     <div className="w-full max-w-md mx-auto text-center space-y-4 animate-fade-in">
       {/* Result header */}
-      <div className={`${headingSize} font-bold ${lastAtBat.correct ? 'text-green-400' : 'text-red-400'}`}>
-        {lastAtBat.correct ? (
+      <div className={`${headingSize} font-bold ${correct ? 'text-green-400' : 'text-red-400'}`}>
+        {correct ? (
           kidsMode ? 'Great Job! ⭐' : getHitText(state.currentHitType!)
         ) : (
-          kidsMode ? 'Oh no! Out!' : "You're Out!"
+          kidsMode ? 'Oh no! Out!' : "You're Out! ❌"
         )}
       </div>
 
@@ -29,7 +30,7 @@ export default function ResultDisplay({ state, onContinue, phariseeText, kidsMod
       {state.currentQuestion && (
         <div className="bg-navy-800 rounded-lg p-4 border border-navy-600">
           <p className={`${textSize} text-cream-200 mb-1`}>
-            {lastAtBat.correct ? 'Correct!' : 'The answer was:'}
+            {correct ? 'Correct!' : 'The answer was:'}
           </p>
           <p className={`${kidsMode ? 'text-2xl' : 'text-lg'} font-bold text-gold-400`}>
             {state.currentQuestion.answer}
@@ -39,10 +40,10 @@ export default function ResultDisplay({ state, onContinue, phariseeText, kidsMod
       )}
 
       {/* Runs scored */}
-      {lastAtBat.correct && lastAtBat.runsScored > 0 && (
+      {correct && runsScored > 0 && (
         <div className="bg-green-900/30 border border-green-500/30 rounded-lg p-3">
           <p className={`${textSize} text-green-300 font-bold`}>
-            {lastAtBat.runsScored} run{lastAtBat.runsScored > 1 ? 's' : ''} scored!
+            {runsScored} run{runsScored > 1 ? 's' : ''} scored!
           </p>
         </div>
       )}
@@ -74,21 +75,7 @@ export default function ResultDisplay({ state, onContinue, phariseeText, kidsMod
   );
 }
 
-function getLastAtBatInfo(state: GameState) {
-  // Determine from state whether last at-bat was correct
-  // If outs just increased, it was wrong. Otherwise it was correct.
-  // We use currentHitType and bases to infer
-  const correct = state.currentHitType !== null && state.outs === 0
-    ? true  // This is simplified — the actual tracking happens in context
-    : false;
-
-  return {
-    correct: state.currentQuestion !== null, // Placeholder - actual logic in context
-    runsScored: 0,
-  };
-}
-
-function getHitText(hitType: string): string {
+function getHitText(hitType: HitType): string {
   switch (hitType) {
     case 'single': return 'Single! ⚾';
     case 'double': return 'Double! 🏏';

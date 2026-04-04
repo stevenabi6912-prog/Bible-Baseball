@@ -102,7 +102,7 @@ export default function BaseballDiamond({ bases, outs, kidsMode }: Props) {
       </svg>
 
       {/* Out indicators */}
-      <div className="flex justify-center gap-2 mt-2">
+      <div className="flex justify-center items-center gap-2 mt-3 mb-2">
         <span className={kidsMode ? 'text-base' : 'text-sm'} style={{ color: '#f5f0e1' }}>Outs:</span>
         {[0, 1, 2].map((i) => (
           <div
