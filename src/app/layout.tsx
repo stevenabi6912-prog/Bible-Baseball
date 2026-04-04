@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Bible Baseball — Faith Baptist Church of Chelsea",
   description: "A Bible trivia game with baseball mechanics. Test your KJV knowledge!",
-  manifest: "/manifest.json",
+  manifest: "/Bible-Baseball/manifest.json",
 };
 
 export const viewport: Viewport = {

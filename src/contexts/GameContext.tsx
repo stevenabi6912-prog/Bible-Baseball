@@ -24,10 +24,9 @@ type GameAction =
   | { type: 'START_GAME'; settings: GameSettings }
   | { type: 'SELECT_HIT'; hitType: HitType }
   | { type: 'SET_QUESTION'; question: Question; usedIds: string[] }
-  | { type: 'PROCESS_RESULT'; correct: boolean; result: AtBatResult }
+  | { type: 'PROCESS_RESULT'; correct: boolean }
   | { type: 'NEXT_TURN' }
   | { type: 'DEVICE_PASSED' }
-  | { type: 'SET_STATE'; state: GameState }
   | { type: 'RESET' };
 
 // ============================================================
@@ -59,12 +58,14 @@ export function useGame() {
 }
 
 // ============================================================
-// Reducer
+// Reducer State
 // ============================================================
 
 interface ReducerState {
   game: GameState | null;
   lastResult: AtBatResult | null;
+  /** Incremented on each NEXT_TURN to trigger effects reliably */
+  turnCounter: number;
 }
 
 function gameReducer(state: ReducerState, action: GameAction): ReducerState {
@@ -76,10 +77,9 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
       return {
         game: createInitialGameState(settings, homeTeam, awayTeam),
         lastResult: null,
+        turnCounter: 0,
       };
     }
-    case 'SET_STATE':
-      return { ...state, game: action.state };
     case 'SET_QUESTION':
       if (!state.game) return state;
       return {
@@ -101,6 +101,7 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
       if (!state.game || !state.game.currentHitType) return state;
       const { newState, result } = processAtBat(state.game, state.game.currentHitType, action.correct);
       return {
+        ...state,
         game: { ...newState, turnPhase: 'result' as TurnPhase },
         lastResult: result,
       };
@@ -124,6 +125,7 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
           waitingForPass: needsPass,
         },
         lastResult: null,
+        turnCounter: state.turnCounter + 1,
       };
     }
     case 'DEVICE_PASSED':
@@ -133,7 +135,7 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
         game: { ...state.game, waitingForPass: false },
       };
     case 'RESET':
-      return { game: null, lastResult: null };
+      return { game: null, lastResult: null, turnCounter: 0 };
     default:
       return state;
   }
@@ -173,7 +175,6 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
     const teamPlayers = side === 'away'
       ? players.slice(0, half)
       : players.slice(half);
-
     return {
       id: `${side}-team`,
       name: side === 'away' ? 'Visitors' : 'Home',
@@ -198,15 +199,20 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
 // ============================================================
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [reducerState, dispatch] = useReducer(gameReducer, { game: null, lastResult: null });
+  const [reducerState, dispatch] = useReducer(gameReducer, {
+    game: null,
+    lastResult: null,
+    turnCounter: 0,
+  });
   const state = reducerState.game;
   const lastResult = reducerState.lastResult;
+  const turnCounter = reducerState.turnCounter;
   const [phariseeText, setPhariseeText] = useState('');
-  const computerTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Use a ref to always have current state in the computer effect
+  const computerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
@@ -223,11 +229,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const s = stateRef.current;
     if (!s) return;
     dispatch({ type: 'SELECT_HIT', hitType });
-    const { question, updatedUsedIds } = selectQuestion(
-      hitType,
-      s.kidsMode,
-      s.usedQuestionIds
-    );
+    const { question, updatedUsedIds } = selectQuestion(hitType, s.kidsMode, s.usedQuestionIds);
     dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
   }, []);
 
@@ -237,17 +239,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const correct = checkAnswer(s.currentQuestion, answer);
 
     if (correct) {
-      if (s.currentHitType === 'homerun') {
-        soundManager.play('homerun');
-      } else {
-        soundManager.play('correct');
-      }
+      soundManager.play(s.currentHitType === 'homerun' ? 'homerun' : 'correct');
     } else {
       soundManager.play('wrong');
     }
 
-    // Compute result for passing to reducer
-    dispatch({ type: 'PROCESS_RESULT', correct, result: { correct, hitType: s.currentHitType, runsScored: 0, outsRecorded: 0, newBases: s.bases } });
+    dispatch({ type: 'PROCESS_RESULT', correct });
   }, []);
 
   const nextTurn = useCallback(() => {
@@ -255,11 +252,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!s) return;
     if (s.gameOver) {
       soundManager.stop('background');
-      if (s.awayScore > s.homeScore) {
-        soundManager.play('gameOverWin');
-      } else {
-        soundManager.play('gameOverLose');
-      }
+      soundManager.play(s.awayScore > s.homeScore ? 'gameOverWin' : 'gameOverLose');
     }
     dispatch({ type: 'NEXT_TURN' });
   }, []);
@@ -280,33 +273,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const availableHitTypes = state ? getAvailableHitTypes(state) : [];
   const isComputerTurn = currentBatter?.isComputer ?? false;
 
-  // Handle computer turn automatically
+  // ================================================================
+  // COMPUTER TURN — runs The Pharisee's at-bat automatically
+  // Uses turnCounter as a dependency to ensure it fires reliably
+  // even when turnPhase/halfInning values happen to be the same
+  // ================================================================
   useEffect(() => {
-    if (!state || !isComputerTurn || state.turnPhase !== 'select-hit') return;
-    if (availableHitTypes.length === 0) return;
+    // Clear any pending timer
+    if (computerTimerRef.current) {
+      clearTimeout(computerTimerRef.current);
+      computerTimerRef.current = null;
+    }
 
-    const difficulty = currentBatter?.computerDifficulty || 'medium';
-    const hitChoice = getPhariseeHitChoice(availableHitTypes, difficulty);
-    const delay = getPhariseeThinkingDelay();
+    if (!state || state.turnPhase !== 'select-hit') return;
 
-    const timer1 = setTimeout(() => {
+    // Check if the CURRENT batter is a computer player
+    const batter = getCurrentBatter(state);
+    if (!batter.isComputer) return;
+
+    const difficulty = batter.computerDifficulty || 'medium';
+    const available = getAvailableHitTypes(state);
+    if (available.length === 0) return;
+
+    const hitChoice = getPhariseeHitChoice(available, difficulty);
+
+    // Step 1: "thinking" delay before selecting hit
+    computerTimerRef.current = setTimeout(() => {
       const s = stateRef.current;
       if (!s || s.turnPhase !== 'select-hit') return;
 
+      // Select the hit type
       dispatch({ type: 'SELECT_HIT', hitType: hitChoice });
 
-      const { question, updatedUsedIds } = selectQuestion(
-        hitChoice,
-        s.kidsMode,
-        s.usedQuestionIds
-      );
+      const { question, updatedUsedIds } = selectQuestion(hitChoice, s.kidsMode, s.usedQuestionIds);
       dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
 
-      const answerDelay = getPhariseeThinkingDelay();
-      const timer2 = setTimeout(() => {
+      // Step 2: "answering" delay
+      computerTimerRef.current = setTimeout(() => {
         const { correct } = getPhariseeAnswer(question, difficulty);
-        const flavorText = getFlavorText(correct, true);
-        setPhariseeText(flavorText);
+        setPhariseeText(getFlavorText(correct, true));
 
         if (correct) {
           soundManager.play(hitChoice === 'homerun' ? 'homerun' : 'correct');
@@ -314,21 +319,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           soundManager.play('wrong');
         }
 
-        dispatch({
-          type: 'PROCESS_RESULT',
-          correct,
-          result: { correct, hitType: hitChoice, runsScored: 0, outsRecorded: 0, newBases: { first: false, second: false, third: false } },
-        });
-      }, answerDelay);
-      computerTimerRef.current = timer2;
-    }, delay);
-    computerTimerRef.current = timer1;
+        dispatch({ type: 'PROCESS_RESULT', correct });
+      }, getPhariseeThinkingDelay());
+    }, getPhariseeThinkingDelay());
 
     return () => {
-      if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
+      if (computerTimerRef.current) {
+        clearTimeout(computerTimerRef.current);
+        computerTimerRef.current = null;
+      }
     };
+  // turnCounter is the key dependency — it changes every NEXT_TURN dispatch
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.turnPhase, state?.halfInning, state?.currentInning, isComputerTurn]);
+  }, [turnCounter, state?.turnPhase]);
 
   return (
     <GameContext.Provider
