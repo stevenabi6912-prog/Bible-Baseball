@@ -208,16 +208,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const lastResult = reducerState.lastResult;
   const turnCounter = reducerState.turnCounter;
   const [phariseeText, setPhariseeText] = useState('');
-  const computerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // Track whether a computer turn sequence is currently running
+  const computerTurnActiveRef = useRef(false);
+  // Store timer IDs for cleanup on unmount/reset only
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearAllTimers = useCallback(() => {
+    timersRef.current.forEach(t => clearTimeout(t));
+    timersRef.current = [];
+    computerTurnActiveRef.current = false;
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
-    };
-  }, []);
+    return () => clearAllTimers();
+  }, [clearAllTimers]);
 
   const startGame = useCallback((settings: GameSettings) => {
     soundManager.init();
@@ -263,9 +270,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const resetGame = useCallback(() => {
     soundManager.stopAll();
-    if (computerTimerRef.current) clearTimeout(computerTimerRef.current);
+    clearAllTimers();
     dispatch({ type: 'RESET' });
-  }, []);
+  }, [clearAllTimers]);
 
   // Compute derived values
   const currentBatter = state ? getCurrentBatter(state) : null;
@@ -275,41 +282,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   // ================================================================
   // COMPUTER TURN — runs The Pharisee's at-bat automatically
-  // Uses turnCounter as a dependency to ensure it fires reliably
-  // even when turnPhase/halfInning values happen to be the same
+  //
+  // KEY INSIGHT: This effect must NOT have state?.turnPhase in its
+  // deps. The dispatches inside the timers change turnPhase, which
+  // would trigger cleanup and kill the second timer. Instead, we
+  // depend ONLY on turnCounter (incremented by NEXT_TURN) and use
+  // computerTurnActiveRef to prevent double-runs.
   // ================================================================
   useEffect(() => {
-    // Clear any pending timer
-    if (computerTimerRef.current) {
-      clearTimeout(computerTimerRef.current);
-      computerTimerRef.current = null;
-    }
+    // Don't start if a sequence is already running
+    if (computerTurnActiveRef.current) return;
 
-    if (!state || state.turnPhase !== 'select-hit') return;
+    const s = stateRef.current;
+    if (!s || s.turnPhase !== 'select-hit') return;
 
     // Check if the CURRENT batter is a computer player
-    const batter = getCurrentBatter(state);
+    const batter = getCurrentBatter(s);
     if (!batter.isComputer) return;
 
     const difficulty = batter.computerDifficulty || 'medium';
-    const available = getAvailableHitTypes(state);
+    const available = getAvailableHitTypes(s);
     if (available.length === 0) return;
+
+    // Mark computer turn as active so re-renders don't restart it
+    computerTurnActiveRef.current = true;
 
     const hitChoice = getPhariseeHitChoice(available, difficulty);
 
     // Step 1: "thinking" delay before selecting hit
-    computerTimerRef.current = setTimeout(() => {
-      const s = stateRef.current;
-      if (!s || s.turnPhase !== 'select-hit') return;
+    const t1 = setTimeout(() => {
+      const s2 = stateRef.current;
+      if (!s2) { computerTurnActiveRef.current = false; return; }
 
-      // Select the hit type
       dispatch({ type: 'SELECT_HIT', hitType: hitChoice });
 
-      const { question, updatedUsedIds } = selectQuestion(hitChoice, s.kidsMode, s.usedQuestionIds);
+      const { question, updatedUsedIds } = selectQuestion(hitChoice, s2.kidsMode, s2.usedQuestionIds);
       dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
 
       // Step 2: "answering" delay
-      computerTimerRef.current = setTimeout(() => {
+      const t2 = setTimeout(() => {
         const { correct } = getPhariseeAnswer(question, difficulty);
         setPhariseeText(getFlavorText(correct, true));
 
@@ -320,18 +331,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         }
 
         dispatch({ type: 'PROCESS_RESULT', correct });
+        computerTurnActiveRef.current = false;
       }, getPhariseeThinkingDelay());
+      timersRef.current.push(t2);
     }, getPhariseeThinkingDelay());
+    timersRef.current.push(t1);
 
-    return () => {
-      if (computerTimerRef.current) {
-        clearTimeout(computerTimerRef.current);
-        computerTimerRef.current = null;
-      }
-    };
-  // turnCounter is the key dependency — it changes every NEXT_TURN dispatch
+    // NO cleanup here — we don't want re-renders to kill our timers.
+    // Timers are only cleared on unmount/reset via clearAllTimers.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [turnCounter, state?.turnPhase]);
+  }, [turnCounter]);
 
   return (
     <GameContext.Provider
