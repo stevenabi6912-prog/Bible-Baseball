@@ -4,9 +4,6 @@
 
 import { Howl } from 'howler';
 
-/** Get the base path for assets (matches next.config.ts basePath) */
-const BASE_PATH = process.env.NODE_ENV === 'production' ? '/Bible-Baseball' : '';
-
 export type SoundName =
   | 'background'
   | 'correct'
@@ -17,41 +14,19 @@ export type SoundName =
   | 'gameOverLose';
 
 interface SoundConfig {
-  src: string[];
+  file: string;
   loop?: boolean;
   volume?: number;
 }
 
 const SOUND_CONFIG: Record<SoundName, SoundConfig> = {
-  background: {
-    src: [BASE_PATH + '/sounds/organ-loop.mp3'],
-    loop: true,
-    volume: 0.3,
-  },
-  correct: {
-    src: [BASE_PATH + '/sounds/crowd-cheer.mp3'],
-    volume: 0.6,
-  },
-  wrong: {
-    src: [BASE_PATH + '/sounds/crowd-groan.mp3'],
-    volume: 0.5,
-  },
-  homerun: {
-    src: [BASE_PATH + '/sounds/homerun-fanfare.mp3'],
-    volume: 0.7,
-  },
-  advance: {
-    src: [BASE_PATH + '/sounds/crowd-react.mp3'],
-    volume: 0.4,
-  },
-  gameOverWin: {
-    src: [BASE_PATH + '/sounds/victory-jingle.mp3'],
-    volume: 0.6,
-  },
-  gameOverLose: {
-    src: [BASE_PATH + '/sounds/defeat-jingle.mp3'],
-    volume: 0.5,
-  },
+  background: { file: 'organ-loop.mp3', loop: true, volume: 0.3 },
+  correct: { file: 'crowd-cheer.mp3', volume: 0.6 },
+  wrong: { file: 'crowd-groan.mp3', volume: 0.5 },
+  homerun: { file: 'homerun-fanfare.mp3', volume: 0.7 },
+  advance: { file: 'crowd-react.mp3', volume: 0.4 },
+  gameOverWin: { file: 'victory-jingle.mp3', volume: 0.6 },
+  gameOverLose: { file: 'defeat-jingle.mp3', volume: 0.5 },
 };
 
 class SoundManager {
@@ -59,19 +34,35 @@ class SoundManager {
   private _muted = false;
   private initialized = false;
 
-  /** Initialize all sounds. Call once after first user interaction. */
+  /**
+   * Initialize all sounds. Call once after first user interaction.
+   * Detects the base path at runtime from the current page URL
+   * so it works on both localhost and GitHub Pages.
+   */
   init() {
     if (this.initialized) return;
 
+    // Detect base path from the current URL at runtime
+    // On GitHub Pages: /Bible-Baseball/  →  basePath = "/Bible-Baseball"
+    // On localhost:    /                 →  basePath = ""
+    let basePath = '';
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      // If the path starts with /Bible-Baseball, use that as base
+      if (path.startsWith('/Bible-Baseball')) {
+        basePath = '/Bible-Baseball';
+      }
+    }
+
     for (const [name, config] of Object.entries(SOUND_CONFIG)) {
+      const src = `${basePath}/sounds/${config.file}`;
       const howl = new Howl({
-        src: config.src,
+        src: [src],
         loop: config.loop ?? false,
         volume: config.volume ?? 0.5,
         preload: true,
-        // Silently handle missing placeholder files
         onloaderror: () => {
-          console.warn(`Sound file not found: ${config.src[0]} — using silent fallback`);
+          console.warn(`Sound file not found: ${src} — using silent fallback`);
         },
       });
       this.sounds.set(name as SoundName, howl);
@@ -105,11 +96,7 @@ class SoundManager {
   /** Toggle mute state */
   toggleMute(): boolean {
     this._muted = !this._muted;
-    if (this._muted) {
-      this.sounds.forEach((sound) => sound.mute(true));
-    } else {
-      this.sounds.forEach((sound) => sound.mute(false));
-    }
+    this.sounds.forEach((sound) => sound.mute(this._muted));
     return this._muted;
   }
 
