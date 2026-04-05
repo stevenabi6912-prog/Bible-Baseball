@@ -66,6 +66,8 @@ interface ReducerState {
   lastResult: AtBatResult | null;
   /** Incremented on each NEXT_TURN to trigger effects reliably */
   turnCounter: number;
+  /** Track who was batting before processAtBat to detect batter changes */
+  previousBatterId: string | null;
 }
 
 function gameReducer(state: ReducerState, action: GameAction): ReducerState {
@@ -78,6 +80,7 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
         game: createInitialGameState(settings, homeTeam, awayTeam),
         lastResult: null,
         turnCounter: 0,
+        previousBatterId: null,
       };
     }
     case 'SET_QUESTION':
@@ -99,11 +102,14 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
       };
     case 'PROCESS_RESULT': {
       if (!state.game || !state.game.currentHitType) return state;
+      // Save current batter ID before processAtBat changes it
+      const batterBefore = getCurrentBatter(state.game);
       const { newState, result } = processAtBat(state.game, state.game.currentHitType, action.correct);
       return {
         ...state,
         game: { ...newState, turnPhase: 'result' as TurnPhase },
         lastResult: result,
+        previousBatterId: batterBefore.id,
       };
     }
     case 'NEXT_TURN': {
@@ -114,7 +120,12 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
           game: { ...state.game, turnPhase: 'game-over' as TurnPhase },
         };
       }
-      const needsPass = state.game.mode === 'local-multiplayer';
+      // Only show "pass device" screen when the batter actually changed
+      // (different player than the one who just batted)
+      const nextBatter = getCurrentBatter(state.game);
+      const batterChanged = state.previousBatterId !== null
+        && state.previousBatterId !== nextBatter.id;
+      const needsPass = state.game.mode === 'local-multiplayer' && batterChanged;
       return {
         ...state,
         game: {
@@ -135,7 +146,7 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
         game: { ...state.game, waitingForPass: false },
       };
     case 'RESET':
-      return { game: null, lastResult: null, turnCounter: 0 };
+      return { game: null, lastResult: null, turnCounter: 0, previousBatterId: null };
     default:
       return state;
   }
@@ -203,6 +214,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     game: null,
     lastResult: null,
     turnCounter: 0,
+    previousBatterId: null,
   });
   const state = reducerState.game;
   const lastResult = reducerState.lastResult;
