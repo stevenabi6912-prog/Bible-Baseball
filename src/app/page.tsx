@@ -6,9 +6,10 @@ import { GameProvider, useGame } from '../contexts/GameContext';
 import MainMenu from '../components/menu/MainMenu';
 import GameSetup from '../components/menu/GameSetup';
 import GameScreen from '../components/game/GameScreen';
+import OnlineLobby from '../components/lobby/OnlineLobby';
 import MuteButton from '../components/ui/MuteButton';
 
-type AppScreen = 'menu' | 'setup' | 'playing';
+type AppScreen = 'menu' | 'setup' | 'online-lobby' | 'playing';
 
 function AppContent() {
   const [screen, setScreen] = useState<AppScreen>('menu');
@@ -17,7 +18,11 @@ function AppContent() {
 
   const handleSelectMode = (mode: GameMode) => {
     setSelectedMode(mode);
-    setScreen('setup');
+    if (mode === 'online-multiplayer') {
+      setScreen('online-lobby');
+    } else {
+      setScreen('setup');
+    }
   };
 
   const handleStart = (settings: GameSettings) => {
@@ -37,6 +42,15 @@ function AppContent() {
         <MuteButton />
         <GameScreen onMainMenu={handleMainMenu} />
       </>
+    );
+  }
+
+  if (screen === 'online-lobby') {
+    return (
+      <OnlineLobby
+        onStart={handleStart}
+        onBack={() => setScreen('menu')}
+      />
     );
   }
 
