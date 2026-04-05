@@ -9,16 +9,25 @@ interface Props {
   onBack: () => void;
 }
 
+interface PlayerEntry {
+  name: string;
+  kidsMode: boolean;
+}
+
 export default function GameSetup({ mode, onStart, onBack }: Props) {
   const [innings, setInnings] = useState<3 | 5 | 7 | 9>(3);
   const [kidsMode, setKidsMode] = useState(false);
   const [difficulty, setDifficulty] = useState<ComputerDifficulty>('medium');
   const [playerName, setPlayerName] = useState('');
-  const [players, setPlayers] = useState<string[]>(['', '']);
+  const [playerIsKid, setPlayerIsKid] = useState(false);
+  const [players, setPlayers] = useState<PlayerEntry[]>([
+    { name: '', kidsMode: false },
+    { name: '', kidsMode: false },
+  ]);
 
   const addPlayer = () => {
     if (players.length < 6) {
-      setPlayers([...players, '']);
+      setPlayers([...players, { name: '', kidsMode: false }]);
     }
   };
 
@@ -28,29 +37,42 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
     }
   };
 
-  const updatePlayer = (index: number, name: string) => {
+  const updatePlayerName = (index: number, name: string) => {
     const updated = [...players];
-    updated[index] = name;
+    updated[index] = { ...updated[index], name };
+    setPlayers(updated);
+  };
+
+  const togglePlayerKids = (index: number) => {
+    const updated = [...players];
+    updated[index] = { ...updated[index], kidsMode: !updated[index].kidsMode };
     setPlayers(updated);
   };
 
   const canStart = () => {
     if (mode === 'vs-computer') return playerName.trim().length > 0;
-    if (mode === 'local-multiplayer') return players.every((p) => p.trim().length > 0);
+    if (mode === 'local-multiplayer') return players.every((p) => p.name.trim().length > 0);
     return true;
   };
 
   const handleStart = () => {
+    // Global kidsMode is true if ANY player has kids mode on (for UI sizing)
+    const anyKids = mode === 'vs-computer'
+      ? playerIsKid
+      : mode === 'local-multiplayer'
+      ? players.some((p) => p.kidsMode)
+      : kidsMode;
+
     const settings: GameSettings = {
       mode,
       innings,
-      kidsMode,
+      kidsMode: anyKids,
       computerDifficulty: mode === 'vs-computer' ? difficulty : undefined,
       players:
         mode === 'vs-computer'
-          ? [{ name: playerName.trim() }]
+          ? [{ name: playerName.trim(), kidsMode: playerIsKid }]
           : mode === 'local-multiplayer'
-          ? players.map((p) => ({ name: p.trim() }))
+          ? players.map((p) => ({ name: p.name.trim(), kidsMode: p.kidsMode }))
           : undefined,
     };
     onStart(settings);
@@ -58,7 +80,6 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
 
   return (
     <div className="min-h-screen bg-navy-950 p-6 flex flex-col">
-      {/* Back button */}
       <button
         onClick={onBack}
         className="text-cream-400 hover:text-white mb-6 self-start flex items-center gap-2"
@@ -75,10 +96,10 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
       </h2>
 
       <div className="max-w-md mx-auto w-full space-y-6">
-        {/* Player name(s) */}
+        {/* vs Computer: single player */}
         {mode === 'vs-computer' && (
-          <div>
-            <label className="block text-cream-300 font-semibold mb-2">Your Name</label>
+          <div className="space-y-3">
+            <label className="block text-cream-300 font-semibold">Your Name</label>
             <input
               type="text"
               value={playerName}
@@ -87,29 +108,51 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
               maxLength={20}
               className="w-full p-3 rounded-lg bg-navy-800 border border-navy-600 text-white placeholder-cream-500 focus:border-gold-500 focus:outline-none"
             />
+            <button
+              onClick={() => setPlayerIsKid(!playerIsKid)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                playerIsKid
+                  ? 'bg-yellow-600/30 border border-yellow-500/50 text-yellow-300'
+                  : 'bg-navy-800 border border-navy-600 text-cream-400'
+              }`}
+            >
+              {playerIsKid ? '⭐ Kids Mode ON' : '👤 Adult Mode'}
+            </button>
           </div>
         )}
 
+        {/* Local Multiplayer: multiple players with per-player kids toggle */}
         {mode === 'local-multiplayer' && (
           <div>
             <label className="block text-cream-300 font-semibold mb-2">
               Players ({players.length}/6)
             </label>
             <div className="space-y-2">
-              {players.map((name, i) => (
-                <div key={i} className="flex gap-2">
+              {players.map((player, i) => (
+                <div key={i} className="flex gap-2 items-center">
                   <input
                     type="text"
-                    value={name}
-                    onChange={(e) => updatePlayer(i, e.target.value)}
+                    value={player.name}
+                    onChange={(e) => updatePlayerName(i, e.target.value)}
                     placeholder={`Player ${i + 1}`}
                     maxLength={20}
                     className="flex-1 p-3 rounded-lg bg-navy-800 border border-navy-600 text-white placeholder-cream-500 focus:border-gold-500 focus:outline-none"
                   />
+                  <button
+                    onClick={() => togglePlayerKids(i)}
+                    title={player.kidsMode ? 'Kids mode (easier questions)' : 'Adult mode'}
+                    className={`px-3 py-3 rounded-lg text-sm font-bold transition-colors shrink-0 ${
+                      player.kidsMode
+                        ? 'bg-yellow-600/30 border border-yellow-500/50 text-yellow-300'
+                        : 'bg-navy-800 border border-navy-600 text-cream-500'
+                    }`}
+                  >
+                    {player.kidsMode ? '⭐' : '👤'}
+                  </button>
                   {players.length > 2 && (
                     <button
                       onClick={() => removePlayer(i)}
-                      className="text-red-400 hover:text-red-300 px-2"
+                      className="text-red-400 hover:text-red-300 px-1"
                     >
                       ✕
                     </button>
@@ -117,14 +160,19 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
                 </div>
               ))}
             </div>
-            {players.length < 6 && (
-              <button
-                onClick={addPlayer}
-                className="mt-2 text-gold-400 hover:text-gold-300 text-sm font-semibold"
-              >
-                + Add Player
-              </button>
-            )}
+            <div className="flex justify-between items-center mt-2">
+              {players.length < 6 && (
+                <button
+                  onClick={addPlayer}
+                  className="text-gold-400 hover:text-gold-300 text-sm font-semibold"
+                >
+                  + Add Player
+                </button>
+              )}
+              <p className="text-cream-500 text-xs">
+                ⭐ = Kids Mode &nbsp; 👤 = Adult
+              </p>
+            </div>
             <p className="text-cream-500 text-xs mt-1">
               First half will be visitors, second half will be home team
             </p>
@@ -183,26 +231,6 @@ export default function GameSetup({ mode, onStart, onBack }: Props) {
             </div>
           </div>
         )}
-
-        {/* Kids mode */}
-        <div className="flex items-center justify-between bg-navy-800 rounded-lg p-4 border border-navy-600">
-          <div>
-            <p className="text-white font-semibold">Kids Mode</p>
-            <p className="text-cream-500 text-sm">Simpler questions, bigger text</p>
-          </div>
-          <button
-            onClick={() => setKidsMode(!kidsMode)}
-            className={`w-14 h-8 rounded-full transition-colors relative ${
-              kidsMode ? 'bg-gold-500' : 'bg-navy-600'
-            }`}
-          >
-            <div
-              className={`w-6 h-6 bg-white rounded-full absolute top-1 transition-transform ${
-                kidsMode ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
 
         {/* Start button */}
         <button

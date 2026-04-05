@@ -305,8 +305,8 @@ export function switchHalfInning(state: GameState): GameState {
     scores,
     rotation: {}, // Reset rotation for every new half-inning
     turnPhase: 'between-turns',
-    currentQuestion: null,
-    currentHitType: null,
+    // Don't clear currentQuestion/currentHitType here — the result
+    // screen needs them to show the answer. NEXT_TURN clears them.
   };
 }
 
@@ -452,7 +452,6 @@ function finalizeGame(state: GameState): GameState {
     gameOver: true,
     winnerId,
     turnPhase: 'game-over',
-    currentQuestion: null,
-    currentHitType: null,
+    // Don't clear currentQuestion/currentHitType — result screen needs them.
   };
 }

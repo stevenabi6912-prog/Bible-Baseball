@@ -159,11 +159,12 @@ function gameReducer(state: ReducerState, action: GameAction): ReducerState {
 function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
   if (settings.mode === 'vs-computer') {
     if (side === 'away') {
-      const playerName = settings.players?.[0]?.name || 'Player';
+      const p = settings.players?.[0];
+      const playerName = p?.name || 'Player';
       return {
         id: 'human-team',
         name: playerName,
-        players: [{ id: 'human-1', name: playerName }],
+        players: [{ id: 'human-1', name: playerName, kidsMode: p?.kidsMode }],
         currentBatterIndex: 0,
       };
     }
@@ -188,10 +189,11 @@ function buildTeam(side: 'home' | 'away', settings: GameSettings): Team {
       : players.slice(half);
     return {
       id: `${side}-team`,
-      name: side === 'away' ? 'Visitors' : 'Home',
+      name: teamPlayers.map(p => p.name).join(' & '),
       players: teamPlayers.map((p, i) => ({
         id: `${side}-${i}`,
         name: p.name,
+        kidsMode: p.kidsMode,
       })),
       currentBatterIndex: 0,
     };
@@ -248,7 +250,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const s = stateRef.current;
     if (!s) return;
     dispatch({ type: 'SELECT_HIT', hitType });
-    const { question, updatedUsedIds } = selectQuestion(hitType, s.kidsMode, s.usedQuestionIds);
+    // Use the current batter's individual kidsMode setting
+    const batter = getCurrentBatter(s);
+    const useKidsMode = batter.kidsMode ?? s.kidsMode;
+    const { question, updatedUsedIds } = selectQuestion(hitType, useKidsMode, s.usedQuestionIds);
     dispatch({ type: 'SET_QUESTION', question, usedIds: updatedUsedIds });
   }, []);
 

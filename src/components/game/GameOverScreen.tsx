@@ -1,6 +1,6 @@
 'use client';
 
-import type { GameState } from '../../types';
+import type { GameState, Team } from '../../types';
 
 interface Props {
   state: GameState;
@@ -9,10 +9,19 @@ interface Props {
   kidsMode?: boolean;
 }
 
+/** Get displayable team name — list all player names */
+function getTeamDisplayName(team: Team): string {
+  if (team.players.length === 1) {
+    return team.players[0].name;
+  }
+  return team.players.map((p) => p.name).join(', ');
+}
+
 export default function GameOverScreen({ state, onPlayAgain, onMainMenu, kidsMode }: Props) {
   const homeWins = state.homeScore > state.awayScore;
   const isTie = state.homeScore === state.awayScore;
-  const winnerName = isTie ? null : homeWins ? state.homeTeam.name : state.awayTeam.name;
+  const winningTeam = isTie ? null : homeWins ? state.homeTeam : state.awayTeam;
+  const winnerDisplay = winningTeam ? getTeamDisplayName(winningTeam) : null;
   const headingSize = kidsMode ? 'text-4xl' : 'text-3xl';
 
   return (
@@ -23,15 +32,12 @@ export default function GameOverScreen({ state, onPlayAgain, onMainMenu, kidsMod
         </div>
 
         <h1 className={`${headingSize} font-bold text-gold-400`}>
-          {kidsMode
-            ? isTie ? 'Great Game!' : `${winnerName} Wins!`
-            : isTie ? "It's a Tie!" : 'Game Over!'
-          }
+          {isTie ? "It's a Tie!" : 'Game Over!'}
         </h1>
 
-        {!isTie && (
+        {!isTie && winnerDisplay && (
           <p className="text-2xl text-white font-semibold">
-            {winnerName} wins!
+            {winnerDisplay} {winningTeam!.players.length > 1 ? 'win' : 'wins'}!
           </p>
         )}
 
@@ -40,12 +46,12 @@ export default function GameOverScreen({ state, onPlayAgain, onMainMenu, kidsMod
           <h3 className="text-cream-300 text-sm mb-3">FINAL SCORE</h3>
           <div className="flex justify-between items-center text-2xl">
             <div className="text-center flex-1">
-              <p className="text-cream-400 text-sm">{state.awayTeam.name}</p>
+              <p className="text-cream-400 text-sm">{getTeamDisplayName(state.awayTeam)}</p>
               <p className="text-3xl font-bold text-white">{state.awayScore}</p>
             </div>
             <div className="text-cream-500 text-xl px-4">—</div>
             <div className="text-center flex-1">
-              <p className="text-cream-400 text-sm">{state.homeTeam.name}</p>
+              <p className="text-cream-400 text-sm">{getTeamDisplayName(state.homeTeam)}</p>
               <p className="text-3xl font-bold text-white">{state.homeScore}</p>
             </div>
           </div>

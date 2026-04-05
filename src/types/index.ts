@@ -40,6 +40,8 @@ export interface Player {
   avatarUrl?: string;
   isComputer?: boolean;
   computerDifficulty?: ComputerDifficulty;
+  /** Per-player kids mode — uses easier questions for this player */
+  kidsMode?: boolean;
 }
 
 /** A team of players */
@@ -153,7 +155,7 @@ export interface GameSettings {
   innings: 3 | 5 | 7 | 9;
   kidsMode: boolean;
   computerDifficulty?: ComputerDifficulty;
-  players?: { name: string }[];
+  players?: { name: string; kidsMode?: boolean }[];
 }
 
 /** Online lobby state */
