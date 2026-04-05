@@ -7,11 +7,10 @@ interface Props {
   correct: boolean;
   runsScored: number;
   onContinue: () => void;
-  phariseeText?: string;
   kidsMode?: boolean;
 }
 
-export default function ResultDisplay({ state, correct, runsScored, onContinue, phariseeText, kidsMode }: Props) {
+export default function ResultDisplay({ state, correct, runsScored, onContinue, kidsMode }: Props) {
   const textSize = kidsMode ? 'text-xl' : 'text-base';
   const headingSize = kidsMode ? 'text-3xl' : 'text-2xl';
 
@@ -45,14 +44,6 @@ export default function ResultDisplay({ state, correct, runsScored, onContinue, 
           <p className={`${textSize} text-green-300 font-bold`}>
             {runsScored} run{runsScored > 1 ? 's' : ''} scored!
           </p>
-        </div>
-      )}
-
-      {/* Pharisee flavor text */}
-      {phariseeText && (
-        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-3 italic">
-          <p className="text-sm text-purple-300">The Pharisee says:</p>
-          <p className={`${textSize} text-purple-200`}>&ldquo;{phariseeText}&rdquo;</p>
         </div>
       )}
 

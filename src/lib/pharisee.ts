@@ -4,11 +4,17 @@
 
 import type { ComputerDifficulty, HitType, Question, PhariseeReaction } from '../types';
 
-/** Accuracy rates by difficulty setting */
+/**
+ * Accuracy rates by difficulty setting.
+ * Tuned for target scoring ranges in a 3-inning game:
+ *   Easy:   1-5 runs  (low accuracy, conservative hits)
+ *   Medium: 5-7 runs  (moderate accuracy, balanced hits)
+ *   Hard:   7-11 runs (high accuracy, aggressive hits)
+ */
 const ACCURACY: Record<ComputerDifficulty, number> = {
-  easy: 0.4,
-  medium: 0.65,
-  hard: 0.85,
+  easy: 0.35,
+  medium: 0.68,
+  hard: 0.88,
 };
 
 /**
@@ -51,11 +57,14 @@ export function getPhariseeHitChoice(
   available: HitType[],
   difficulty: ComputerDifficulty
 ): HitType {
-  // Weight preferences by difficulty
+  // Weight preferences by difficulty — higher difficulty = more aggressive
+  // Easy: mostly singles (low run production even when correct)
+  // Medium: balanced mix with some doubles
+  // Hard: aggressive doubles/triples/HRs for high run production
   const weights: Record<ComputerDifficulty, Record<HitType, number>> = {
-    easy: { single: 4, double: 3, triple: 2, homerun: 1 },
-    medium: { single: 3, double: 3, triple: 2, homerun: 2 },
-    hard: { single: 2, double: 3, triple: 3, homerun: 2 },
+    easy: { single: 6, double: 3, triple: 1, homerun: 0 },
+    medium: { single: 3, double: 4, triple: 2, homerun: 1 },
+    hard: { single: 1, double: 3, triple: 3, homerun: 3 },
   };
 
   const w = weights[difficulty];

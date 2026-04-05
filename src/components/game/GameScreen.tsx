@@ -84,16 +84,23 @@ export default function GameScreen({ onMainMenu }: Props) {
       {/* Spacer to separate diamond from content below */}
       <div className="h-4" />
 
-      {/* Computer thinking indicator */}
+      {/* Computer: selecting hit type */}
       {isComputerTurn && state.turnPhase === 'select-hit' && (
         <div className="mt-2">
           <PhariseeAvatar thinking kidsMode={kidsMode} />
         </div>
       )}
 
-      {isComputerTurn && state.turnPhase === 'answer-question' && (
-        <div className="mt-2">
+      {/* Computer: answering question — show the question so players can see it */}
+      {isComputerTurn && state.turnPhase === 'answer-question' && state.currentQuestion && (
+        <div className="mt-2 space-y-3">
           <PhariseeAvatar thinking kidsMode={kidsMode} />
+          <QuestionDisplay
+            question={state.currentQuestion}
+            onAnswer={() => {}}
+            kidsMode={kidsMode}
+            disabled
+          />
         </div>
       )}
 
@@ -119,7 +126,7 @@ export default function GameScreen({ onMainMenu }: Props) {
         </div>
       )}
 
-      {/* Result display */}
+      {/* Result display — Pharisee flavor text only in the avatar, not duplicated */}
       {state.turnPhase === 'result' && (
         <div className="mt-2">
           {isComputerTurn && phariseeText && (
@@ -132,7 +139,6 @@ export default function GameScreen({ onMainMenu }: Props) {
             correct={lastResult?.correct ?? false}
             runsScored={lastResult?.runsScored ?? 0}
             onContinue={nextTurn}
-            phariseeText={isComputerTurn ? phariseeText : undefined}
             kidsMode={kidsMode}
           />
         </div>
